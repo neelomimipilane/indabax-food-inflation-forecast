@@ -1,0 +1,7 @@
+This project forecasts Botswana food price inflation using monthly macroeconomic and commodity data.
+The main workflow is:
+1. Load raw CSV files from data/raw.
+2. Aggregate daily BDI values into monthly features.
+3. Merge with Brent price, policy rate, and CPI features.
+4. Create lag features for inflation.
+5. Train SARIMAX and LSTM models and save predictions.
