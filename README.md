@@ -1,47 +1,95 @@
-# Botswana Food Inflation Forecasting Project
+# Botswana Food Inflation Forecasting
 
-## Overview
+## About the Project
 
-This repository implements a reproducible forecasting workflow for Botswana food price inflation and a companion human-capital analysis based only on the datasets supplied in the repository.
+This project was done for the IndabaX Botswana AI Hackathon. The aim of the project is to predict Botswana's monthly food price inflation using historical economic data. We also looked at how changes in food inflation may affect some human capital indicators.
 
-## Repository Structure
+During the project we tested both **SARIMAX** and **LSTM** models. After comparing the results, we decided to use the **SARIMAX** model for the final predictions because it performed better on our data.
 
-- src/preprocessing.py: loads the raw data, aligns the monthly series, and creates the engineered features.
-- src/models.py: trains the forecasting model used for the submission output.
-- src/evaluation.py: fits the model, generates the official forecast, and writes outputs/predictions.csv.
-- src/human_capital_analysis.py: estimates regressions between food inflation and the available Botswana human-capital indicators and writes projected impacts.
-- outputs/: submission output files and projection tables.
-- figures/: generated plots.
+---
 
-## Installation
+## Project Files
+
+```
+src/
+    preprocessing.py
+    models.py
+    evaluation.py
+    human_capital_analysis.py
+
+outputs/
+figures/
+requirements.txt
+README.md
+```
+
+### preprocessing.py
+
+Reads all the datasets, cleans them, joins them together and creates the features used by the models.
+
+### models.py
+
+Contains the forecasting models used in this project. We experimented with both SARIMAX and LSTM during model development.
+
+### evaluation.py
+
+Runs the forecasting model and creates the final `predictions.csv` file for submission.
+
+### human_capital_analysis.py
+
+Analyses how food inflation is related to human capital indicators and saves the results.
+
+---
+
+## Installing the Project
+
+Install the required packages using:
 
 ```bash
 py -3 -m pip install -r requirements.txt
 ```
 
-## Running the Project
+---
 
-Generate the submission forecast:
+## Running the Forecast
 
 ```bash
 py -3 src/evaluation.py
 ```
 
-Generate the human-capital analysis outputs:
+---
+
+## Running the Human Capital Analysis
 
 ```bash
 py -3 src/human_capital_analysis.py
 ```
 
-## Outputs
+---
 
-The main submission artifact is outputs/predictions.csv, which contains:
+## Output Files
 
-- year_month
-- forecast
+After running the project you should get:
 
-The human-capital workflow writes outputs/human_capital_projections.csv and several plots to figures/.
+- `outputs/predictions.csv` – the final food inflation forecasts.
+- `outputs/human_capital_projections.csv` – projected human capital results.
+- Graphs saved inside the `figures` folder.
 
-## Notes
+---
 
-The forecasting model used for the final submission is a single SARIMAX model. The report and projection outputs are generated directly from the repository code and the submission forecast.
+## Datasets Used
+
+The project uses the datasets provided for the hackathon:
+
+- Baltic Dry Index
+- Brent Crude Oil Prices
+- Botswana Policy Rate
+- FAO Food Price Data
+- Human Capital Data
+
+---
+
+## Final Model
+
+Although we experimented with both SARIMAX and LSTM, the final submission uses the SARIMAX model because it gave better forecasting results.
+

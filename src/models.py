@@ -84,7 +84,7 @@ def train_sarimax(train_data, test_data):
     adf_stat = adf_result[0]
     adf_p = adf_result[1]
 
-    # Let the grid search decide d, but cap it
+    # Let the grid search decide d
     order, best_aic = pick_sarimax_order(train_y, train_x)
 
     model = SARIMAX(
