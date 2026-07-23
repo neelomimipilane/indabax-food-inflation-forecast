@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer
+
+from models import forecast_future_sarimax
 
 
 def _load_hcp_data():
@@ -27,39 +27,79 @@ def _align_with_monthly_index(data):
     return aligned
 
 
-def evaluate_models(sarimax_result, lstm_result, test_data, figures_dir, outputs_dir, reports_dir):
-    figures_dir.mkdir(exist_ok=True)
-    outputs_dir.mkdir(exist_ok=True)
-    reports_dir.mkdir(exist_ok=True)
+def _write_predictions_csv(output_path, forecast_dates, forecasts):
+    forecast_values = pd.to_numeric(pd.Series(forecasts), errors="coerce")
+    if forecast_values.isna().any():
+        raise ValueError("Forecast values contain missing values")
 
-    sarimax_predictions = pd.Series(sarimax_result["predictions"], index=test_data.index)
-    lstm_actual = pd.Series(lstm_result["actual"], index=test_data.index[-len(lstm_result["actual"]):])
-    lstm_predictions = pd.Series(lstm_result["predictions"], index=lstm_actual.index)
-
-    forecast_dates = pd.date_range(start="2024-01-01", periods=12, freq="MS")
-    forecast_frame = pd.DataFrame(
+    prediction_frame = pd.DataFrame(
         {
             "year_month": forecast_dates.strftime("%Y-%m"),
-            "forecast": sarimax_predictions.iloc[-12:].to_numpy(),
+            "forecast": forecast_values.astype(float).to_numpy(),
         }
     )
-    forecast_frame.to_csv(outputs_dir / "predictions.csv", index=False)
+    prediction_frame.to_csv(output_path, index=False)
 
-    plot_predictions(test_data["food_price_inflation"], sarimax_predictions, "SARIMAX", figures_dir / "sarimax_predictions.png")
-    plot_residuals(test_data["food_price_inflation"], sarimax_predictions, "SARIMAX", figures_dir / "sarimax_residuals.png")
-    plot_predictions(lstm_actual, lstm_predictions, "LSTM", figures_dir / "lstm_predictions.png")
-    plot_residuals(lstm_actual, lstm_predictions, "LSTM", figures_dir / "lstm_residuals.png")
+    written_frame = pd.read_csv(output_path)
+    if len(written_frame.columns) != 2:
+        raise ValueError(f"Predictions CSV must have exactly 2 columns, found {len(written_frame.columns)}")
+    if list(written_frame.columns) != ["year_month", "forecast"]:
+        raise ValueError(f"Predictions CSV columns must be ['year_month', 'forecast'], found {list(written_frame.columns)}")
+    if len(written_frame) != 12:
+        raise ValueError(f"Predictions CSV must have exactly 12 rows, found {len(written_frame)}")
+    if written_frame["forecast"].isna().any():
+        raise ValueError("Predictions CSV contains missing forecast values")
+
+    return written_frame
+
+
+def _build_submission_forecast(full_data, horizon=12, start_date="2024-01-01"):
+    forecast_values = forecast_future_sarimax(full_data, horizon=horizon)
+    forecast_values = pd.to_numeric(forecast_values, errors="coerce")
+    if forecast_values.isna().any():
+        raise ValueError("Future forecast contains missing values")
+
+    forecast_dates = pd.date_range(start=start_date, periods=horizon, freq="MS")
+    return forecast_dates, forecast_values.astype(float).to_numpy()
+
+
+def evaluate_models(sarimax_result, lstm_result, full_data, test_data, figures_dir, outputs_dir):
+    figures_dir.mkdir(exist_ok=True)
+    outputs_dir.mkdir(exist_ok=True)
+
+    sarimax_predictions = pd.Series(sarimax_result["predictions"], index=test_data.index)
+
+    if lstm_result is not None:
+        lstm_actual = pd.Series(lstm_result["actual"], index=test_data.index[-len(lstm_result["actual"]):])
+        lstm_predictions = pd.Series(lstm_result["predictions"], index=lstm_actual.index)
+    else:
+        lstm_actual = None
+        lstm_predictions = None
+
+    # Export the single submission forecast 
+    forecast_dates, future_forecasts = _build_submission_forecast(full_data, horizon=12, start_date="2024-01-01")
+    _write_predictions_csv(outputs_dir / "predictions.csv", forecast_dates, future_forecasts)
+
+    plot_predictions(
+        test_data["food_price_inflation"], sarimax_predictions, "SARIMAX", figures_dir / "sarimax_predictions.png"
+    )
+    plot_residuals(
+        test_data["food_price_inflation"], sarimax_predictions, "SARIMAX", figures_dir / "sarimax_residuals.png"
+    )
     plot_historical_inflation(test_data, figures_dir / "historical_food_inflation.png")
     plot_historical_bdi(test_data, figures_dir / "historical_bdi.png")
     plot_hcp_relationship(test_data, figures_dir / "hcp_relationship.png")
     plot_hcp_projection(test_data, figures_dir / "hcp_projection.png")
 
-    generate_reports(sarimax_result, lstm_result, test_data, reports_dir)
+    if lstm_actual is not None and lstm_predictions is not None:
+        plot_predictions(lstm_actual, lstm_predictions, "LSTM", figures_dir / "lstm_predictions.png")
+        plot_residuals(lstm_actual, lstm_predictions, "LSTM", figures_dir / "lstm_residuals.png")
 
     print("SARIMAX metrics")
     print_metrics(sarimax_result["metrics"])
-    print("LSTM metrics")
-    print_metrics(lstm_result["metrics"])
+    if lstm_result is not None:
+        print("LSTM metrics")
+        print_metrics(lstm_result["metrics"])
 
 
 def plot_predictions(actual, predictions, name, output_path):
@@ -115,6 +155,10 @@ def plot_hcp_relationship(data, output_path):
     merged = _align_with_monthly_index(data).join(hcp, how="left")
     merged = merged.dropna()
 
+    if merged.empty:
+        print("Skipping hcp_relationship.png: no overlapping data between model data and HCP indicators")
+        return
+
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
     axes[0].scatter(merged["FAO_CP_23012"], merged["food_price_inflation"])
     axes[0].set_title("Inflation vs Indicator 23012")
@@ -133,6 +177,11 @@ def plot_hcp_relationship(data, output_path):
 def plot_hcp_projection(data, output_path):
     hcp = _load_hcp_data()
     merged = _align_with_monthly_index(data).join(hcp, how="left").dropna()
+
+    if merged.empty:
+        print("Skipping hcp_projection.png: no overlapping data between model data and HCP indicators")
+        return
+
     inflation = merged["food_price_inflation"].to_numpy()
     x = np.column_stack([np.ones(len(inflation)), inflation])
     y1 = merged["FAO_CP_23012"].to_numpy()
@@ -157,50 +206,18 @@ def plot_hcp_projection(data, output_path):
     plt.close()
 
 
-def generate_reports(sarimax_result, lstm_result, test_data, reports_dir):
-    styles = getSampleStyleSheet()
-    hcp = _load_hcp_data()
-    merged = _align_with_monthly_index(test_data).join(hcp, how="left").dropna()
-    inflation = merged["food_price_inflation"].to_numpy()
-    x = np.column_stack([np.ones(len(inflation)), inflation])
-    model1 = sm.OLS(merged["FAO_CP_23012"], x).fit()
-    model2 = sm.OLS(merged["FAO_CP_23013"], x).fit()
-
-    story = []
-    story.append(Paragraph("Feature Engineering Report", styles["Title"]))
-    story.append(Paragraph("This report documents the feature engineering workflow. The daily Baltic Dry Index series was aggregated to monthly mean, standard deviation, range, and return values before joining with monthly Brent prices, Botswana policy rates, and FAO consumer price indices. The target is FAO Item 23014 food price inflation, and lag features were built from the inflation series only so that no future information is leaked into the training window. Unavailable 2024 features were handled by relying on the latest available monthly values and by keeping the modelling window consistent with the available historical data.", styles["BodyText"]))
-    story.append(Spacer(1, 12))
-    story.append(Paragraph("The economic reasoning is that shipping conditions, energy prices, and domestic policy conditions can influence food costs over time, while lagged inflation captures persistence in consumer prices.", styles["BodyText"]))
-    story.append(PageBreak())
-    story.append(Paragraph("Model Comparison Report", styles["Title"]))
-    story.append(Paragraph(f"SARIMAX uses an exogenous regression structure with RMSE {sarimax_result['metrics']['rmse']:.3f}, MAE {sarimax_result['metrics']['mae']:.3f}, and MAPE {sarimax_result['metrics']['mape']:.3f}. The model uses an ARMA order of (1, 0, 1) with an intercept and the same exogenous variables used in the preprocessing step. LSTM uses one recurrent layer with dropout and early stopping, and its metrics are RMSE {lstm_result['metrics']['rmse']:.3f}, MAE {lstm_result['metrics']['mae']:.3f}, and MAPE {lstm_result['metrics']['mape']:.3f}.", styles["BodyText"]))
-    story.append(Spacer(1, 12))
-    story.append(Paragraph(f"Residual diagnostics are reported for SARIMAX with a residual mean of {sarimax_result['diagnostics']['residual_mean']:.3f} and a first-order autocorrelation of {sarimax_result['diagnostics']['residual_autocorr_1']:.3f}. The forecast plots are saved in the figures directory and the comparison is kept honest by reporting both the stronger and weaker model outputs rather than over-claiming performance. The main limitation is that the evaluation window is short and the LSTM setup is intentionally lightweight.", styles["BodyText"]))
-    story.append(PageBreak())
-    story.append(Paragraph("HCP Linkage Memo", styles["Title"]))
-    story.append(Paragraph(f"Two HCP indicators were examined: FAO_CP_23012 and FAO_CP_23013. A simple regression was used to assess the association between those indicators and food inflation. The coefficient for FAO_CP_23012 is {model1.params.iloc[1]:.3f} with p-value {model1.pvalues.iloc[1]:.3f}, while the coefficient for FAO_CP_23013 is {model2.params.iloc[1]:.3f} with p-value {model2.pvalues.iloc[1]:.3f}. These results are interpreted as directional evidence rather than as a definitive causal claim, and the fitted relationship was then used to project simple forward paths for the indicators.", styles["BodyText"]))
-
-    doc = SimpleDocTemplate(str(reports_dir / "feature_engineering_report.pdf"))
-    doc.build(story[:3])
-    doc2 = SimpleDocTemplate(str(reports_dir / "model_comparison_report.pdf"))
-    doc2.build(story[3:6])
-    doc3 = SimpleDocTemplate(str(reports_dir / "hcp_linkage_memo.pdf"))
-    doc3.build(story[6:])
-
-
 def print_metrics(metrics):
     for name, value in metrics.items():
         print(f"{name}: {value:.3f}")
 
 
 if __name__ == "__main__":
-    from preprocessing import create_lag_features, load_data, split_train_test
+    from preprocessing import add_features, load_data, split_train_test
     from models import train_lstm, train_sarimax
 
     data = load_data()
-    features = create_lag_features(data)
+    features = add_features(data)
     train, test = split_train_test(features)
     sarimax_result = train_sarimax(train, test)
-    lstm_result = train_lstm(train, test)
     root = Path(__file__).resolve().parent.parent
-    evaluate_models(sarimax_result, lstm_result, test, root / "figures", root / "outputs", root / "reports")
+    evaluate_models(sarimax_result, None, features, test, root / "figures", root / "outputs")
