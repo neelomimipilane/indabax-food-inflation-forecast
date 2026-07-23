@@ -43,8 +43,8 @@ Whether you are a technical evaluator, a domain expert, or exploring this projec
 ### Step 1: Clone the Repository
 Open your terminal (**Command Prompt**, **PowerShell**, or **Terminal** on macOS/Linux) and clone the repository to your local machine:
 ```bash
-git clone https://github.com/your-username/botswana-food-inflation-forecasting.git
-cd botswana-food-inflation-forecasting
+git clone https://github.com/neelomimipilane/indabax-food-inflation-forecast.git
+cd indabax-food-inflation-forecast
 ```
 
 ### Step 2: Verify Your Python Installation
