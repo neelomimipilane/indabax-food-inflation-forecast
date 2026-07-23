@@ -1,5 +1,5 @@
 model,mae,rmse,mape,test_split
 SARIMAX,2.2399,3.0086,20.2336,holdout
-LSTM,2.1087,2.4351,24.1156,holdout
+LSTM,3.4141,3.7260,37.0366,holdout
 SARIMAX,2.2594,3.0903,20.5381,walk_forward
-LSTM,2.1087,2.4351,24.1156,walk_forward
+LSTM,3.4141,3.7260,37.0366,walk_forward

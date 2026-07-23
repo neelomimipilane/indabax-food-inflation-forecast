@@ -1,7 +1,7 @@
 
-S##ARIMAX and LSTM models for food inflation forecasting.
+#SARIMAX and LSTM models for food inflation forecasting.
 
-
+#Import necessary libraries
 import os
 import sys
 import time
@@ -24,7 +24,8 @@ from tensorflow.keras.models import Sequential
 tf.get_logger().setLevel(40)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-
+#-------------------------------
+#create sequences for LSTM model
 def make_sequences(values, target_values, lookback_value):
     X, y = [], []
     for i in range(len(values) - lookback_value + 1):
@@ -32,7 +33,8 @@ def make_sequences(values, target_values, lookback_value):
         y.append(target_values[i + lookback_value - 1])
     return np.array(X, dtype=np.float64), np.array(y, dtype=np.float64)
 
-
+#-------------------------------
+#
 def check_stationarity(series):
     #Run ADF test to check if the series needs differencing.
     result = adfuller(series.dropna(), autolag="AIC")
