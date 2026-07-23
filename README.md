@@ -1,95 +1,90 @@
-# Botswana Food Inflation Forecasting
+# Botswana Food Price Inflation Forecasting
 
-## About the Project
+This is our submission for the IndabaX Botswana AI Hackathon. We forecast Botswana's monthly food price inflation using two models - SARIMAX and LSTM - and compare which works better.
 
-This project was done for the IndabaX Botswana AI Hackathon. The aim of the project is to predict Botswana's monthly food price inflation using historical economic data. We also looked at how changes in food inflation may affect some human capital indicators.
+## What we did
 
-During the project we tested both **SARIMAX** and **LSTM** models. After comparing the results, we decided to use the **SARIMAX** model for the final predictions because it performed better on our data.
+Food prices in Botswana have been pretty volatile lately, especially after the post-COVID inflation spike and the war in Ukraine pushing up energy costs. We wanted to see if we could forecast the food price inflation using a mix of global shipping costs (Baltic Dry Index), oil prices (Brent), and Botswana's own policy rate.
 
----
+We also looked at how food inflation might affect human capital indicators like school attendance or health outcomes, but that part is separate from the actual forecasting.
 
-## Project Files
+## Project structure
 
 ```
 src/
-    preprocessing.py
-    models.py
-    evaluation.py
-    human_capital_analysis.py
+    preprocessing.py      - loads data, cleans it, creates features
+    models.py             - SARIMAX and LSTM models
+    evaluation.py         - trains models, compares them, saves outputs
+    human_capital_analysis.py - links inflation to human capital indicators
 
-outputs/
-figures/
+data/raw/                - the five datasets given for the hackathon
+outputs/                 - predictions.csv, metrics.csv, figures
+figures/                 - all the plots
 requirements.txt
 README.md
 ```
 
-### preprocessing.py
+## Running it
 
-Reads all the datasets, cleans them, joins them together and creates the features used by the models.
-
-### models.py
-
-Contains the forecasting models used in this project. We experimented with both SARIMAX and LSTM during model development.
-
-### evaluation.py
-
-Runs the forecasting model and creates the final `predictions.csv` file for submission.
-
-### human_capital_analysis.py
-
-Analyses how food inflation is related to human capital indicators and saves the results.
-
----
-
-## Installing the Project
-
-Install the required packages using:
+You need Python 3.11 or 3.12 (TensorFlow doesn't support 3.13+ yet).
 
 ```bash
 py -3 -m pip install -r requirements.txt
-```
-
----
-
-## Running the Forecast
-
-```bash
 py -3 src/evaluation.py
-```
-
----
-
-## Running the Human Capital Analysis
-
-```bash
 py -3 src/human_capital_analysis.py
 ```
 
----
+If TensorFlow is installed, the LSTM will run. If not, it skips gracefully and you still get the SARIMAX results.
 
-## Output Files
+## Datasets
 
-After running the project you should get:
+We used all five datasets provided:
 
-- `outputs/predictions.csv` – the final food inflation forecasts.
-- `outputs/human_capital_projections.csv` – projected human capital results.
-- Graphs saved inside the `figures` folder.
+- **Baltic Dry Index** (daily -> monthly features like mean, volatility, momentum)
+- **Brent Crude Oil** (monthly prices with lags and rolling averages)
+- **Botswana Policy Rate** (monthly with lags and change indicators)
+- **FAO Food Prices** (the target - Botswana food CPI and inflation)
+- **Human Capital Data** (only used after forecasting, not as a model input)
 
----
+## Feature engineering
 
-## Datasets Used
+For each dataset we tried to capture different things:
 
-The project uses the datasets provided for the hackathon:
+- **BDI**: monthly mean, standard deviation, range, volatility, 3-month and 6-month momentum, trend, extreme day count, rolling averages
+- **Brent**: 3 lags, rolling means, monthly change
+- **Policy Rate**: 3 lags, rolling mean, monthly change, increase/decrease flag
+- **Food CPI**: lags 1-6 months, rolling mean, rolling std
 
-- Baltic Dry Index
-- Brent Crude Oil Prices
-- Botswana Policy Rate
-- FAO Food Price Data
-- Human Capital Data
+We dropped any row with missing values after creating lags.
 
----
+## Lag selection
 
-## Final Model
+we actually tested lags 1 through 6 months for each variable using correlation, cross-correlation, AIC and BIC. The best lag for each feature was selected automatically and documented.
 
-Although we experimented with both SARIMAX and LSTM, the final submission uses the SARIMAX model because it gave better forecasting results.
+## SARIMAX
+
+We tuned `p`, `d`, `q` using grid search with AIC, and also tested seasonal parameters. We used walk-forward validation to get more realistic error estimates. The model outputs RMSE, MAE, MAPE, confidence intervals, and we checked residuals with the Ljung-Box test.
+
+## LSTM
+
+The LSTM uses sequences of 12 months. We normalize features and targets separately, use EarlyStopping, ModelCheckpoint, and ReduceLROnPlateau. The network has two LSTM layers with dropout.
+
+## Model comparison
+
+We compare both models on the same test set using RMSE, MAE, and MAPE. The better one is used for the final `predictions.csv`.
+
+## Outputs
+
+After running, you get:
+
+- `outputs/predictions.csv` - 12-month forecast
+- `outputs/human_capital_projections.csv` - projected human capital indicators
+- `outputs/metrics.csv` - model comparison
+- `outputs/feature_importances.csv` - SARIMAX-based feature importance
+- `figures/` - forecast plot, prediction vs actual, residuals, dataset comparisons, lag correlations, human capital charts
+
+## Limitations
+
+- Only about 20 years of monthly data, so deep learning doesn't have much to work with
+- Future exogenous values are assumed flat at their last observed value
 
