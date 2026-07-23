@@ -1,6 +1,6 @@
-"""
-SARIMAX and LSTM models for food inflation forecasting.
-"""
+
+S##ARIMAX and LSTM models for food inflation forecasting.
+
 
 import os
 import sys
@@ -25,15 +25,22 @@ tf.get_logger().setLevel(40)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 
+def make_sequences(values, target_values, lookback_value):
+    X, y = [], []
+    for i in range(len(values) - lookback_value + 1):
+        X.append(values[i : i + lookback_value])
+        y.append(target_values[i + lookback_value - 1])
+    return np.array(X, dtype=np.float64), np.array(y, dtype=np.float64)
+
+
 def check_stationarity(series):
-    """Run ADF test to check if the series needs differencing."""
+    #Run ADF test to check if the series needs differencing.
     result = adfuller(series.dropna(), autolag="AIC")
     return float(result[0]), float(result[1])
 
 
 def pick_sarimax_order(train_series, exog_train, max_p=2, max_q=2, max_d=1):
-    # Small grid search to pick (p,d,q) based on AIC
-    # A student would try a few combinations, not just guess
+    # Compare a few SARIMAX orders and keep the one with the lowest AIC
     best_aic = 1e10
     best_order = (0, 1, 0)
 
@@ -61,8 +68,7 @@ def pick_sarimax_order(train_series, exog_train, max_p=2, max_q=2, max_d=1):
 
 def walk_forward_metrics(train, test, features, order):
     """
-    Walk-forward validation for a more realistic error estimate.
-    Retrain the model each month using all data available up to that point.
+    Walk-forward validation.
     """
     hist = train.copy()
     preds = []
@@ -106,10 +112,7 @@ def walk_forward_metrics(train, test, features, order):
 
 
 def train_sarimax(train_data, test_data, features=None):
-    """
-    Train SARIMAX with grid-searched (p,d,q) and fixed seasonal order.
-    Returns predictions on the test set plus diagnostics.
-    """
+    # Train SARIMAX model
     if features is None:
         from src.preprocessing import FEATURE_COLS
         features = [c for c in FEATURE_COLS if c in train_data.columns]
@@ -176,10 +179,7 @@ def train_sarimax(train_data, test_data, features=None):
 
 
 def forecast_future_sarimax(data, horizon=12, order=None, features=None):
-    """
-    Train on the full dataset and forecast horizon months into the future.
-    Future exogenous values are held at the last observed level.
-    """
+    # Forecast horizon months
     if features is None:
         from src.preprocessing import FEATURE_COLS
         features = [c for c in FEATURE_COLS if c in data.columns]
@@ -210,10 +210,7 @@ def forecast_future_sarimax(data, horizon=12, order=None, features=None):
 
 
 def train_lstm(train_data, test_data, lookback=12, features=None):
-    """
-    Train an LSTM on sequences of monthly data.
-    Uses separate scalers for features and target, plus standard callbacks.
-    """
+    # Train LSTM model
     if features is None:
         from src.preprocessing import FEATURE_COLS
         features = [c for c in FEATURE_COLS if c in train_data.columns]
@@ -232,14 +229,6 @@ def train_lstm(train_data, test_data, lookback=12, features=None):
     target_scaler = MinMaxScaler()
     scaled_train_target = target_scaler.fit_transform(train_target.reshape(-1, 1)).flatten()
     scaled_test_target = target_scaler.transform(test_target.reshape(-1, 1)).flatten()
-
-    def make_sequences(values, target_values, lookback_value):
-        """Turn a time series into (samples, timesteps, features) arrays."""
-        X, y = [], []
-        for i in range(len(values) - lookback_value + 1):
-            X.append(values[i : i + lookback_value])
-            y.append(target_values[i + lookback_value - 1])
-        return np.array(X, dtype=np.float64), np.array(y, dtype=np.float64)
 
     X_train, y_train = make_sequences(scaled_train, scaled_train_target, lookback)
 
@@ -266,7 +255,7 @@ def train_lstm(train_data, test_data, lookback=12, features=None):
 
     checkpoint_path = "best_lstm_model.keras"
 
-    # Standard callbacks for small time-series datasets
+    # Stop training if validation loss stops improving
     callbacks = [
         EarlyStopping(monitor="val_loss", patience=8, restore_best_weights=True, verbose=0),
         ModelCheckpoint(checkpoint_path, monitor="val_loss", save_best_only=True, verbose=0),
@@ -311,10 +300,7 @@ def train_lstm(train_data, test_data, lookback=12, features=None):
 
 
 def forecast_future_lstm(data, horizon=12, lookback=12, features=None):
-    """
-    Train LSTM on the full dataset and forecast horizon months ahead.
-    Future exogenous values are held at the last observed level.
-    """
+    # Forecast horizon months ahead
     if features is None:
         from src.preprocessing import FEATURE_COLS
         features = [c for c in FEATURE_COLS if c in data.columns]
@@ -327,13 +313,6 @@ def forecast_future_lstm(data, horizon=12, lookback=12, features=None):
 
     target_scaler = MinMaxScaler()
     scaled_target = target_scaler.fit_transform(all_target.reshape(-1, 1)).flatten()
-
-    def make_sequences(values, target_values, lookback_value):
-        X, y = [], []
-        for i in range(len(values) - lookback_value + 1):
-            X.append(values[i : i + lookback_value])
-            y.append(target_values[i + lookback_value - 1])
-        return np.array(X, dtype=np.float64), np.array(y, dtype=np.float64)
 
     X_train, y_train = make_sequences(scaled_features, scaled_target, lookback)
 
